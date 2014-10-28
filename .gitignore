@@ -1,0 +1,14 @@
+# NuGet packages folder
+/packages/
+
+# Build output
+
+bin/
+obj/
+
+# Roslyn IntelliSense cache
+*.sln.ide/
+
+# Per-user files
+*.suo
+*.csproj.user
