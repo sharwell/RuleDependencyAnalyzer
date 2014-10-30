@@ -7,6 +7,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using Dependents = Antlr4.Runtime.Dependents;
 
@@ -20,7 +21,7 @@ namespace DiagnosticAndCodeFix
         public const string UnknownRuleId = "AA2000";
         internal const string UnknownRuleTitle = "Unknown rule";
         internal const string UnknownRuleDescription = "A rule dependency specifies a rule index which was not found in the parser";
-        internal const string UnknownRuleMessageFormat = "Rule dependency on unknown rule '{0}' in {1}";
+        internal const string UnknownRuleMessageFormat = "Rule dependency on unknown rule '{0}' in '{1}'";
         internal static readonly DiagnosticDescriptor UnknownRule = new DiagnosticDescriptor(UnknownRuleId, UnknownRuleTitle, UnknownRuleMessageFormat, AntlrCategory, DiagnosticSeverity.Warning, true, UnknownRuleDescription);
 
         public const string VersionTooHighId = "AA2001";
@@ -32,14 +33,20 @@ namespace DiagnosticAndCodeFix
         public const string NotImplementedAxisId = "AA2002";
         internal const string NotImplementedAxisTitle = "Dependency axis not yet implemented";
         internal const string NotImplementedAxisDescription = "A rule dependency specifies a Dependants axis which is not yet supported by this analyzer. The version is only partially checked.";
-        internal const string NotImplementedAxisMessageFormat = "The following dependents of rule '{0}' are not yet implemented: {1}";
+        internal const string NotImplementedAxisMessageFormat = "Analysis for the following dependents of rule '{0}' are not yet implemented: {1}";
         internal static readonly DiagnosticDescriptor NotImplementedAxis = new DiagnosticDescriptor(NotImplementedAxisId, NotImplementedAxisTitle, NotImplementedAxisMessageFormat, AntlrCategory, DiagnosticSeverity.Warning, true, NotImplementedAxisDescription);
 
         public const string VersionTooLowId = "AA2003";
         internal const string VersionTooLowTitle = "Rule dependency version too low";
         internal const string VersionTooLowDescription = "A rule dependency specifies a version number which is lower than the version of a dependent rule";
-        internal const string VersionTooLowMessageFormat = "Rule dependency version mismatch: {0} has version {1} (expected <= {2}) in {3}";
+        internal const string VersionTooLowMessageFormat = "Declared dependency version {0}, but dependent {1} has newer version {2}";
         internal static readonly DiagnosticDescriptor VersionTooLow = new DiagnosticDescriptor(VersionTooLowId, VersionTooLowTitle, VersionTooLowMessageFormat, AntlrCategory, DiagnosticSeverity.Error, true, VersionTooLowDescription);
+
+        public const string AnalysisErrorId = "AA2004";
+        internal const string AnalysisErrorTitle = "Rule dependency analysis error";
+        internal const string AnalysisErrorDescription = "A rule dependency declaration could not be analyzed due to an error in the source code or analyzer.";
+        internal const string AnalysisErrorMessageFormat = "Rule dependency analysis failed: {0}";
+        internal static readonly DiagnosticDescriptor AnalysisError = new DiagnosticDescriptor(AnalysisErrorId, AnalysisErrorTitle, AnalysisErrorMessageFormat, AntlrCategory, DiagnosticSeverity.Warning, true, AnalysisErrorDescription);
 
         public const string DiagnosticId = "DiagnosticAndCodeFix";
 
@@ -47,7 +54,7 @@ namespace DiagnosticAndCodeFix
         {
             get
             {
-                return ImmutableArray.Create(UnknownRule, VersionTooHigh, NotImplementedAxis, VersionTooLow);
+                return ImmutableArray.Create(UnknownRule, VersionTooHigh, NotImplementedAxis, VersionTooLow, AnalysisError);
             }
         }
 
@@ -106,8 +113,33 @@ namespace DiagnosticAndCodeFix
             ImmutableArray<Diagnostic>.Builder errors = ImmutableArray.CreateBuilder<Diagnostic>();
             foreach (var dependency in dependencies)
             {
-                if (!compilation.ClassifyConversion(recognizerType, GetRecognizerType(dependency.Item1)).IsImplicit)
+                if (ruleNames == null)
+                {
+                    Location location = GetRecognizerTypeLocation(dependency.Item1);
+                    errors.Add(Diagnostic.Create(AnalysisError, location, "could not read rule names from generated parser"));
                     continue;
+                }
+
+                if (ruleVersions == null)
+                {
+                    Location location = GetRecognizerTypeLocation(dependency.Item1);
+                    errors.Add(Diagnostic.Create(AnalysisError, location, "could not read rule versions from generated parser"));
+                    continue;
+                }
+
+                if (relations == null)
+                {
+                    Location location = GetRecognizerTypeLocation(dependency.Item1);
+                    errors.Add(Diagnostic.Create(AnalysisError, location, "could not read the ATN from the generated parser"));
+                    continue;
+                }
+
+                if (!compilation.ClassifyConversion(recognizerType, GetRecognizerType(dependency.Item1)).IsImplicit)
+                {
+                    Location location = GetRecognizerTypeLocation(dependency.Item1);
+                    errors.Add(Diagnostic.Create(AnalysisError, location, string.Format("could not convert '{0}' to '{1}'", recognizerType, GetRecognizerType(dependency.Item1))));
+                    continue;
+                }
 
                 // this is the rule in the dependency set with the highest version number
                 int effectiveRule = GetRule(dependency.Item1);
@@ -118,8 +150,8 @@ namespace DiagnosticAndCodeFix
                     continue;
                 }
 
-                Dependents dependents = Dependents.Self | GetDependents(dependency.Item1);
-                ReportUnimplementedDependents(errors, dependency, dependents);
+                Dependents dependents = Dependents.Self | (GetDependents(dependency.Item1) ?? Dependents.Parents);
+                bool containsUnimplemented = ReportUnimplementedDependents(errors, dependency, ruleNames, dependents);
                 bool[] @checked = new bool[ruleNames.Length];
                 int highestRequiredDependency = CheckDependencyVersion(errors, dependency, ruleNames, ruleVersions, effectiveRule, null);
                 if ((dependents & Dependents.Parents) != 0)
@@ -127,7 +159,13 @@ namespace DiagnosticAndCodeFix
                     bool[] parents = relations.parents[GetRule(dependency.Item1)];
                     for (int parent = Array.IndexOf(parents, true, 0); parent >= 0; parent = Array.IndexOf(parents, true, parent + 1))
                     {
-                        if (parent >= ruleVersions.Length || @checked[parent])
+                        if (parent >= ruleVersions.Length)
+                        {
+                            errors.Add(Diagnostic.Create(AnalysisError, GetLocation(dependency.Item1), "parent index out of range during analysis"));
+                            continue;
+                        }
+
+                        if (@checked[parent])
                             continue;
 
                         @checked[parent] = true;
@@ -141,7 +179,13 @@ namespace DiagnosticAndCodeFix
                     bool[] children = relations.children[GetRule(dependency.Item1)];
                     for (int child = Array.IndexOf(children, true, 0); child >= 0; child = Array.IndexOf(children, true, child + 1))
                     {
-                        if (child >= ruleVersions.Length || @checked[child])
+                        if (child >= ruleVersions.Length)
+                        {
+                            errors.Add(Diagnostic.Create(AnalysisError, GetLocation(dependency.Item1), "child index out of range during analysis"));
+                            continue;
+                        }
+
+                        if (@checked[child])
                             continue;
 
                         @checked[child] = true;
@@ -155,7 +199,13 @@ namespace DiagnosticAndCodeFix
                     bool[] ancestors = relations.GetAncestors(GetRule(dependency.Item1));
                     for (int ancestor = Array.IndexOf(ancestors, true, 0); ancestor >= 0; ancestor = Array.IndexOf(ancestors, true, ancestor + 1))
                     {
-                        if (ancestor >= ruleVersions.Length || @checked[ancestor])
+                        if (ancestor >= ruleVersions.Length)
+                        {
+                            errors.Add(Diagnostic.Create(AnalysisError, GetLocation(dependency.Item1), "ancestor index out of range during analysis"));
+                            continue;
+                        }
+
+                        if (@checked[ancestor])
                             continue;
 
                         @checked[ancestor] = true;
@@ -169,7 +219,13 @@ namespace DiagnosticAndCodeFix
                     bool[] descendants = relations.GetDescendants(GetRule(dependency.Item1));
                     for (int descendant = Array.IndexOf(descendants, true, 0); descendant >= 0; descendant = Array.IndexOf(descendants, true, descendant + 1))
                     {
-                        if (descendant >= ruleVersions.Length || @checked[descendant])
+                        if (descendant >= ruleVersions.Length)
+                        {
+                            errors.Add(Diagnostic.Create(AnalysisError, GetLocation(dependency.Item1), "descendant index out of range during analysis"));
+                            continue;
+                        }
+
+                        if (@checked[descendant])
                             continue;
 
                         @checked[descendant] = true;
@@ -179,7 +235,7 @@ namespace DiagnosticAndCodeFix
                 }
 
                 int declaredVersion = GetVersion(dependency.Item1);
-                if (declaredVersion > highestRequiredDependency)
+                if (declaredVersion > highestRequiredDependency && !containsUnimplemented)
                 {
                     Location location = Location.Create(dependency.Item1.ApplicationSyntaxReference.SyntaxTree, dependency.Item1.ApplicationSyntaxReference.Span);
                     errors.Add(Diagnostic.Create(VersionTooHigh, location, ruleNames[GetRule(dependency.Item1)], highestRequiredDependency, declaredVersion, GetRecognizerType(dependency.Item1)));
@@ -187,6 +243,12 @@ namespace DiagnosticAndCodeFix
             }
 
             return errors.ToImmutable();
+        }
+
+        private Location GetLocation(AttributeData attributeData)
+        {
+            var syntax = attributeData.ApplicationSyntaxReference;
+            return Location.Create(syntax.SyntaxTree, syntax.Span);
         }
 
         private INamedTypeSymbol GetRecognizerType(AttributeData attributeData)
@@ -197,6 +259,17 @@ namespace DiagnosticAndCodeFix
 
             TypedConstant recognizerConstant = attributeData.ConstructorArguments[0];
             return recognizerConstant.Value as INamedTypeSymbol;
+        }
+
+        private Location GetRecognizerTypeLocation(AttributeData attributeData)
+        {
+            INamedTypeSymbol recognizerType = GetRecognizerType(attributeData);
+            if (recognizerType == null)
+                return GetLocation(attributeData);
+
+            var attributeSyntax = (AttributeSyntax)attributeData.ApplicationSyntaxReference.GetSyntax();
+            var syntax = attributeSyntax.ArgumentList.Arguments[0];
+            return Location.Create(syntax.SyntaxTree, syntax.Span);
         }
 
         private int GetRule(AttributeData attributeData)
@@ -213,16 +286,11 @@ namespace DiagnosticAndCodeFix
         {
             int ruleIndex = GetRule(attributeData);
             if (ruleIndex < 0)
-            {
-                var syntax = attributeData.ApplicationSyntaxReference;
-                return Location.Create(syntax.SyntaxTree, syntax.Span);
-            }
-            else
-            {
-                var attributeSyntax = (AttributeSyntax)attributeData.ApplicationSyntaxReference.GetSyntax();
-                var syntax = attributeSyntax.ArgumentList.Arguments[1];
-                return Location.Create(syntax.SyntaxTree, syntax.Span);
-            }
+                return GetLocation(attributeData);
+
+            var attributeSyntax = (AttributeSyntax)attributeData.ApplicationSyntaxReference.GetSyntax();
+            var syntax = attributeSyntax.ArgumentList.Arguments[1];
+            return Location.Create(syntax.SyntaxTree, syntax.Span);
         }
 
         private int GetVersion(AttributeData attributeData)
@@ -235,27 +303,43 @@ namespace DiagnosticAndCodeFix
             return (int)versionConstant.Value;
         }
 
-        private Dependents GetDependents(AttributeData attributeData)
+        private Dependents? GetDependents(AttributeData attributeData)
         {
             var dependentsParameter = attributeData.AttributeConstructor.Parameters.ElementAtOrDefault(3);
             if (dependentsParameter == null || dependentsParameter.Name != "dependents")
-                return Dependents.Self;
+                return null;
 
             TypedConstant dependentsConstant = attributeData.ConstructorArguments[3];
             return (Dependents)(int)dependentsConstant.Value;
         }
 
+        private Location GetDependentsLocation(AttributeData attributeData)
+        {
+            Dependents? dependents = GetDependents(attributeData);
+            if (!dependents.HasValue)
+                return GetLocation(attributeData);
+
+            var attributeSyntax = (AttributeSyntax)attributeData.ApplicationSyntaxReference.GetSyntax();
+            var syntax = attributeSyntax.ArgumentList.Arguments[3];
+            return Location.Create(syntax.SyntaxTree, syntax.Span);
+        }
+
         private static readonly Dependents ImplementedDependents = Dependents.Self | Dependents.Parents | Dependents.Children | Dependents.Ancestors | Dependents.Descendants;
 
-        private void ReportUnimplementedDependents(IList<Diagnostic> errors, Tuple<AttributeData, ISymbol> dependency, Dependents dependents)
+        private bool ReportUnimplementedDependents(IList<Diagnostic> errors, Tuple<AttributeData, ISymbol> dependency, string[] ruleNames, Dependents dependents)
         {
             Dependents unimplemented = dependents;
             unimplemented &= ~ImplementedDependents;
             if (unimplemented != Dependents.None)
             {
-                Location location = Location.Create(dependency.Item1.ApplicationSyntaxReference.SyntaxTree, dependency.Item1.ApplicationSyntaxReference.Span);
-                errors.Add(Diagnostic.Create(NotImplementedAxis, location, GetRule(dependency.Item1), unimplemented));
+                int ruleIndex = GetRule(dependency.Item1);
+                string ruleName = ruleIndex >= 0 && ruleIndex < ruleNames.Length ? ruleNames[ruleIndex] : ruleIndex.ToString();
+                Location location = GetDependentsLocation(dependency.Item1);
+                errors.Add(Diagnostic.Create(NotImplementedAxis, location, ruleName, unimplemented));
+                return true;
             }
+
+            return false;
         }
 
         private int CheckDependencyVersion(IList<Diagnostic> errors, Tuple<AttributeData, ISymbol> dependency, string[] ruleNames, int[] ruleVersions, int relatedRule, string relation)
@@ -264,20 +348,20 @@ namespace DiagnosticAndCodeFix
             string path;
             if (relation == null)
             {
-                path = ruleName;
+                path = string.Format("rule '{0}'", ruleName);
             }
             else
             {
                 string mismatchedRuleName = ruleNames[relatedRule];
-                path = string.Format("rule {0} ({1} of {2})", mismatchedRuleName, relation, ruleName);
+                path = string.Format("rule '{0}' ({1} of '{2}')", mismatchedRuleName, relation, ruleName);
             }
 
             int declaredVersion = GetVersion(dependency.Item1);
             int actualVersion = ruleVersions[relatedRule];
             if (actualVersion > declaredVersion)
             {
-                Location location = Location.Create(dependency.Item1.ApplicationSyntaxReference.SyntaxTree, dependency.Item1.ApplicationSyntaxReference.Span);
-                errors.Add(Diagnostic.Create(VersionTooLow, location, path, actualVersion, declaredVersion, GetRecognizerType(dependency.Item1)));
+                Location location = GetLocation(dependency.Item1);
+                errors.Add(Diagnostic.Create(VersionTooLow, location, declaredVersion, path, actualVersion));
             }
 
             return actualVersion;
@@ -461,15 +545,57 @@ namespace DiagnosticAndCodeFix
         {
             IFieldSymbol serializedAtnField = recognizerType.GetMembers("_serializedATN").FirstOrDefault() as IFieldSymbol;
             if (serializedAtnField != null)
-            {
-                if (!serializedAtnField.IsConst)
-                    return null;
-
-                return serializedAtnField.ConstantValue as string;
-            }
+                return GetFixedValue(serializedAtnField);
 
             if (recognizerType.BaseType != null)
                 return GetSerializedATN(recognizerType.BaseType);
+
+            return null;
+        }
+
+        private string GetFixedValue(IFieldSymbol fieldSymbol)
+        {
+            if (fieldSymbol.IsConst)
+                return fieldSymbol.ConstantValue as string;
+
+            var syntax = fieldSymbol.DeclaringSyntaxReferences.First().GetSyntax(CancellationToken.None) as VariableDeclaratorSyntax;
+            var valueSyntax = syntax?.Initializer?.Value as LiteralExpressionSyntax;
+            if (valueSyntax != null)
+            {
+                string value = valueSyntax?.Token.Value as string;
+                return value;
+            }
+
+            if (syntax?.Initializer?.Value is BinaryExpressionSyntax)
+            {
+                Stack<ExpressionSyntax> stack = new Stack<ExpressionSyntax>();
+                stack.Push(syntax?.Initializer.Value);
+                StringBuilder builder = new StringBuilder();
+                while (stack.Count > 0)
+                {
+                    ExpressionSyntax current = stack.Pop();
+
+                    LiteralExpressionSyntax literal = current as LiteralExpressionSyntax;
+                    if (literal != null)
+                    {
+                        string value = literal?.Token.Value as string;
+                        if (value == null)
+                            return null;
+
+                        builder.Append(value);
+                        continue;
+                    }
+
+                    BinaryExpressionSyntax binarySyntax = current as BinaryExpressionSyntax;
+                    if (binarySyntax == null || !binarySyntax.IsKind(SyntaxKind.AddExpression))
+                        return null;
+
+                    stack.Push(binarySyntax.Right);
+                    stack.Push(binarySyntax.Left);
+                }
+
+                return builder.ToString();
+            }
 
             return null;
         }
