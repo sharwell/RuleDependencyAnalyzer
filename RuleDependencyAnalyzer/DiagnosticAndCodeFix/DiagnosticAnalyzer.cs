@@ -23,13 +23,31 @@ namespace DiagnosticAndCodeFix
         internal const string UnknownRuleMessageFormat = "Rule dependency on unknown rule '{0}' in {1}";
         internal static readonly DiagnosticDescriptor UnknownRule = new DiagnosticDescriptor(UnknownRuleId, UnknownRuleTitle, UnknownRuleMessageFormat, AntlrCategory, DiagnosticSeverity.Warning, true, UnknownRuleDescription);
 
+        public const string VersionTooHighId = "AA2001";
+        internal const string VersionTooHighTitle = "Rule dependency version too high";
+        internal const string VersionTooHighDescription = "A rule dependency specifies a version number which is higher than the maximum version of its dependent rules";
+        internal const string VersionTooHighMessageFormat = "Rule dependency version mismatch: '{0}' has maximum dependency version {1} (expected {2}) in {3}";
+        internal static readonly DiagnosticDescriptor VersionTooHigh = new DiagnosticDescriptor(VersionTooHighId, VersionTooHighTitle, VersionTooHighMessageFormat, AntlrCategory, DiagnosticSeverity.Error, true, VersionTooHighDescription);
+
+        public const string NotImplementedAxisId = "AA2002";
+        internal const string NotImplementedAxisTitle = "Dependency axis not yet implemented";
+        internal const string NotImplementedAxisDescription = "A rule dependency specifies a Dependants axis which is not yet supported by this analyzer. The version is only partially checked.";
+        internal const string NotImplementedAxisMessageFormat = "The following dependents of rule '{0}' are not yet implemented: {1}";
+        internal static readonly DiagnosticDescriptor NotImplementedAxis = new DiagnosticDescriptor(NotImplementedAxisId, NotImplementedAxisTitle, NotImplementedAxisMessageFormat, AntlrCategory, DiagnosticSeverity.Warning, true, NotImplementedAxisDescription);
+
+        public const string VersionTooLowId = "AA2003";
+        internal const string VersionTooLowTitle = "Rule dependency version too low";
+        internal const string VersionTooLowDescription = "A rule dependency specifies a version number which is lower than the version of a dependent rule";
+        internal const string VersionTooLowMessageFormat = "Rule dependency version mismatch: {0} has version {1} (expected <= {2}) in {3}";
+        internal static readonly DiagnosticDescriptor VersionTooLow = new DiagnosticDescriptor(VersionTooLowId, VersionTooLowTitle, VersionTooLowMessageFormat, AntlrCategory, DiagnosticSeverity.Error, true, VersionTooLowDescription);
+
         public const string DiagnosticId = "DiagnosticAndCodeFix";
 
         public ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics
         {
             get
             {
-                return ImmutableArray.Create(UnknownRule);
+                return ImmutableArray.Create(UnknownRule, VersionTooHigh, NotImplementedAxis, VersionTooLow);
             }
         }
 
@@ -163,9 +181,8 @@ namespace DiagnosticAndCodeFix
                 int declaredVersion = GetVersion(dependency.Item1);
                 if (declaredVersion > highestRequiredDependency)
                 {
-                    string message = string.Format("Rule dependency version mismatch: {0} has maximum dependency version {1} (expected {2}) in {3}", ruleNames[GetRule(dependency.Item1)], highestRequiredDependency, declaredVersion, GetRecognizerType(dependency.Item1));
                     Location location = Location.Create(dependency.Item1.ApplicationSyntaxReference.SyntaxTree, dependency.Item1.ApplicationSyntaxReference.Span);
-                    errors.Add(Diagnostic.Create("AA2000", "Compiler", message, DiagnosticSeverity.Error, true, 0, false, location: location));
+                    errors.Add(Diagnostic.Create(VersionTooHigh, location, ruleNames[GetRule(dependency.Item1)], highestRequiredDependency, declaredVersion, GetRecognizerType(dependency.Item1)));
                 }
             }
 
@@ -236,9 +253,8 @@ namespace DiagnosticAndCodeFix
             unimplemented &= ~ImplementedDependents;
             if (unimplemented != Dependents.None)
             {
-                string message = string.Format("Cannot validate the following dependents of rule {0}: {1}", GetRule(dependency.Item1), unimplemented);
                 Location location = Location.Create(dependency.Item1.ApplicationSyntaxReference.SyntaxTree, dependency.Item1.ApplicationSyntaxReference.Span);
-                errors.Add(Diagnostic.Create("AA2000", "Compiler", message, DiagnosticSeverity.Warning, true, 1, false, location: location));
+                errors.Add(Diagnostic.Create(NotImplementedAxis, location, GetRule(dependency.Item1), unimplemented));
             }
         }
 
@@ -260,8 +276,8 @@ namespace DiagnosticAndCodeFix
             int actualVersion = ruleVersions[relatedRule];
             if (actualVersion > declaredVersion)
             {
-                string message = string.Format("Rule dependency version mismatch: {0} has version {1} (expected <= {2}) in {3}", path, actualVersion, declaredVersion, GetRecognizerType(dependency.Item1));
-                errors.Add(Diagnostic.Create("AA2000", "Compiler", message, DiagnosticSeverity.Error, true, 0, false, location: Location.Create(dependency.Item1.ApplicationSyntaxReference.SyntaxTree, dependency.Item1.ApplicationSyntaxReference.Span)));
+                Location location = Location.Create(dependency.Item1.ApplicationSyntaxReference.SyntaxTree, dependency.Item1.ApplicationSyntaxReference.Span);
+                errors.Add(Diagnostic.Create(VersionTooLow, location, path, actualVersion, declaredVersion, GetRecognizerType(dependency.Item1)));
             }
 
             return actualVersion;
