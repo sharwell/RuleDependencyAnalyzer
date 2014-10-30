@@ -17,10 +17,10 @@ namespace DiagnosticAndCodeFix
     {
         internal const string AntlrCategory = "ANTLR";
 
-        public const string UnknownRuleId = "AC2000";
+        public const string UnknownRuleId = "AA2000";
         internal const string UnknownRuleTitle = "Unknown rule";
         internal const string UnknownRuleDescription = "A rule dependency specifies a rule index which was not found in the parser";
-        internal const string UnknownRuleMessageFormat = "Rule dependency on unknown rule {0}@{1} in {2}";
+        internal const string UnknownRuleMessageFormat = "Rule dependency on unknown rule '{0}' in {1}";
         internal static readonly DiagnosticDescriptor UnknownRule = new DiagnosticDescriptor(UnknownRuleId, UnknownRuleTitle, UnknownRuleMessageFormat, AntlrCategory, DiagnosticSeverity.Warning, true, UnknownRuleDescription);
 
         public const string DiagnosticId = "DiagnosticAndCodeFix";
@@ -96,7 +96,7 @@ namespace DiagnosticAndCodeFix
                 if (effectiveRule < 0 || effectiveRule >= ruleVersions.Length)
                 {
                     Location location = GetRuleLocation(dependency.Item1);
-                    errors.Add(Diagnostic.Create(UnknownRule, location, GetRule(dependency.Item1), GetVersion(dependency.Item1), GetRecognizerType(dependency.Item1)));
+                    errors.Add(Diagnostic.Create(UnknownRule, location, GetRule(dependency.Item1), GetRecognizerType(dependency.Item1)));
                     continue;
                 }
 
