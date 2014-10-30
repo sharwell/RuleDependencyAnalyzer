@@ -1,32 +1,35 @@
+using Antlr4.Runtime.Atn;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.Diagnostics;
 using Dependents = Antlr4.Runtime.Dependents;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Antlr4.Runtime.Atn;
 
 namespace DiagnosticAndCodeFix
 {
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public class DiagnosticAnalyzer : ISemanticModelAnalyzer
     {
-        public const string DiagnosticId = "DiagnosticAndCodeFix";
-        internal const string Description = "Type name contains lowercase letters";
-        internal const string MessageFormat = "Type name '{0}' contains lowercase letters";
-        internal const string Category = "Naming";
+        internal const string AntlrCategory = "ANTLR";
 
-        internal static DiagnosticDescriptor Rule = new DiagnosticDescriptor(DiagnosticId, Description, MessageFormat, Category, DiagnosticSeverity.Warning, true);
+        public const string UnknownRuleId = "AC2000";
+        internal const string UnknownRuleTitle = "Unknown rule";
+        internal const string UnknownRuleDescription = "A rule dependency specifies a rule index which was not found in the parser";
+        internal const string UnknownRuleMessageFormat = "Rule dependency on unknown rule {0}@{1} in {2}";
+        internal static readonly DiagnosticDescriptor UnknownRule = new DiagnosticDescriptor(UnknownRuleId, UnknownRuleTitle, UnknownRuleMessageFormat, AntlrCategory, DiagnosticSeverity.Warning, true, UnknownRuleDescription);
+
+        public const string DiagnosticId = "DiagnosticAndCodeFix";
 
         public ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics
         {
             get
             {
-                return ImmutableArray.Create(Rule);
+                return ImmutableArray.Create(UnknownRule);
             }
         }
 
@@ -92,9 +95,8 @@ namespace DiagnosticAndCodeFix
                 int effectiveRule = GetRule(dependency.Item1);
                 if (effectiveRule < 0 || effectiveRule >= ruleVersions.Length)
                 {
-                    string message = string.Format("Rule dependency on unknown rule {0}@{1} in {2}", GetRule(dependency.Item1), GetVersion(dependency.Item1), GetRecognizerType(dependency.Item1));
-                    Location location = Location.Create(dependency.Item1.ApplicationSyntaxReference.SyntaxTree, dependency.Item1.ApplicationSyntaxReference.Span);
-                    errors.Add(Diagnostic.Create("AA2000", "Compiler", message, DiagnosticSeverity.Warning, true, 2, true, location: location));
+                    Location location = GetRuleLocation(dependency.Item1);
+                    errors.Add(Diagnostic.Create(UnknownRule, location, GetRule(dependency.Item1), GetVersion(dependency.Item1), GetRecognizerType(dependency.Item1)));
                     continue;
                 }
 
@@ -184,10 +186,26 @@ namespace DiagnosticAndCodeFix
         {
             var ruleParameter = attributeData.AttributeConstructor.Parameters.ElementAtOrDefault(1);
             if (ruleParameter == null || ruleParameter.Name != "rule")
-                return 0;
+                return -1;
 
             TypedConstant ruleConstant = attributeData.ConstructorArguments[1];
             return (int)ruleConstant.Value;
+        }
+
+        private Location GetRuleLocation(AttributeData attributeData)
+        {
+            int ruleIndex = GetRule(attributeData);
+            if (ruleIndex < 0)
+            {
+                var syntax = attributeData.ApplicationSyntaxReference;
+                return Location.Create(syntax.SyntaxTree, syntax.Span);
+            }
+            else
+            {
+                var attributeSyntax = (AttributeSyntax)attributeData.ApplicationSyntaxReference.GetSyntax();
+                var syntax = attributeSyntax.ArgumentList.Arguments[1];
+                return Location.Create(syntax.SyntaxTree, syntax.Span);
+            }
         }
 
         private int GetVersion(AttributeData attributeData)
