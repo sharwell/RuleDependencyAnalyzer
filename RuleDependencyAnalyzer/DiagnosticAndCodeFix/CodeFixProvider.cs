@@ -1,57 +1,49 @@
-﻿using System.Collections.Generic;
+﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.CodeFixes;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
+using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CodeFixes;
-using Microsoft.CodeAnalysis.CodeActions;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Rename;
-using Microsoft.CodeAnalysis.Text;
 
 namespace DiagnosticAndCodeFix
 {
-    [ExportCodeFixProvider(DiagnosticAnalyzer.DiagnosticId, LanguageNames.CSharp)]
+    [ExportCodeFixProvider(DiagnosticAnalyzer.VersionTooLowId, LanguageNames.CSharp)]
     public class CodeFixProvider : ICodeFixProvider
     {
         public IEnumerable<string> GetFixableDiagnosticIds()
         {
-            return new[] { DiagnosticAnalyzer.DiagnosticId };
+            return new[] { DiagnosticAnalyzer.VersionTooLowId };
         }
 
-        public async Task<IEnumerable<CodeAction>> GetFixesAsync(Document document, TextSpan span, IEnumerable<Diagnostic> diagnostics, CancellationToken cancellationToken)
+        public Task<IEnumerable<CodeAction>> GetFixesAsync(Document document, TextSpan span, IEnumerable<Diagnostic> diagnostics, CancellationToken cancellationToken)
+        {
+            ImmutableArray<CodeAction>.Builder result = ImmutableArray.CreateBuilder<CodeAction>();
+            foreach (Diagnostic diagnostic in diagnostics)
+            {
+                // Return a code action that will invoke the fix.
+                result.Add(CodeAction.Create("Update version number", innerCancellationToken => UpdateVersionAsync(document, diagnostic.Location, innerCancellationToken)));
+            }
+
+            return Task.FromResult<IEnumerable<CodeAction>>(result.ToImmutable());
+        }
+
+        private async Task<Document> UpdateVersionAsync(Document document, Location location, CancellationToken cancellationToken)
         {
             var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
 
-            // TODO: Replace the following code with your own analysis, generating a CodeAction for each fix to suggest
+            // Find the attribute syntax identified by the diagnostic.
+            var attributeSyntax = root.FindToken(location.SourceSpan.Start).Parent.AncestorsAndSelf().OfType<AttributeSyntax>().FirstOrDefault();
+            if (attributeSyntax == null)
+                return document;
 
-            var diagnosticSpan = diagnostics.First().Location.SourceSpan;
-
-            // Find the type declaration identified by the diagnostic.
-            var declaration = root.FindToken(diagnosticSpan.Start).Parent.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().First();
-
-            // Return a code action that will invoke the fix.
-            return new[] { CodeAction.Create("Make uppercase", c => MakeUppercaseAsync(document, declaration, c)) };
-        }
-
-        private async Task<Solution> MakeUppercaseAsync(Document document, TypeDeclarationSyntax typeDecl, CancellationToken cancellationToken)
-        {
-            // Compute new uppercase name.
-            var identifierToken = typeDecl.Identifier;
-            var newName = identifierToken.Text.ToUpperInvariant();
-
-            // Get the symbol representing the type to be renamed.
-            var semanticModel = await document.GetSemanticModelAsync(cancellationToken);
-            var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl, cancellationToken);
-
-            // Produce a new solution that has all references to that type renamed, including the declaration.
-            var originalSolution = document.Project.Solution;
-            var optionSet = originalSolution.Workspace.Options;
-            var newSolution = await Renamer.RenameSymbolAsync(document.Project.Solution, typeSymbol, newName, optionSet, cancellationToken).ConfigureAwait(false);
-
-            // Return the new solution with the now-uppercase type name.
-            return newSolution;
+            var versionArgumentExpression = attributeSyntax.ArgumentList.Arguments[2].Expression;
+            var newRoot = root.ReplaceNode(versionArgumentExpression, SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(100)));
+            return document.WithSyntaxRoot(newRoot);
         }
     }
 }
