@@ -374,7 +374,7 @@ namespace DiagnosticAndCodeFix
 
         private int[] GetRuleVersions(INamedTypeSymbol recognizerType, string[] ruleNames)
         {
-            int[] versions = new int[ruleNames.Length];
+            int?[] versions = new int?[ruleNames.Length];
             IFieldSymbol[] fields = recognizerType.GetMembers().OfType<IFieldSymbol>().ToArray();
             foreach (IFieldSymbol field in fields)
             {
@@ -406,15 +406,30 @@ namespace DiagnosticAndCodeFix
                 }
             }
 
-            return versions;
+            if (versions.Any(i => !i.HasValue) && recognizerType.BaseType != null)
+            {
+                int[] inherited = GetRuleVersions(recognizerType.BaseType, ruleNames);
+                for (int i = 0; i < versions.Length; i++)
+                {
+                    if (versions[i].HasValue)
+                        continue;
+
+                    versions[i] = inherited[i];
+                }
+            }
+
+            return Array.ConvertAll(versions, i => i ?? 0);
         }
 
         private IMethodSymbol GetRuleMethod(INamedTypeSymbol recognizerType, string name)
         {
-            foreach (var methodSymbol in recognizerType.GetMembers(name).OfType<IMethodSymbol>())
+            for (INamedTypeSymbol currentType = recognizerType; currentType != null; currentType = currentType.BaseType)
             {
-                if (methodSymbol.GetAttributes().Any(i => i.AttributeClass != null && i.AttributeClass.Name == "RuleVersionAttribute"))
-                    return methodSymbol;
+                foreach (var methodSymbol in currentType.GetMembers(name).OfType<IMethodSymbol>())
+                {
+                    if (methodSymbol.GetAttributes().Any(i => i.AttributeClass != null && i.AttributeClass.Name == "RuleVersionAttribute"))
+                        return methodSymbol;
+                }
             }
 
             return null;
@@ -424,7 +439,13 @@ namespace DiagnosticAndCodeFix
         {
             IFieldSymbol ruleNamesField = recognizerType.GetMembers("ruleNames").FirstOrDefault() as IFieldSymbol;
             if (ruleNamesField == null)
-                return null;
+            {
+                for (INamedTypeSymbol current = recognizerType.BaseType; ruleNamesField == null && current != null; current = current.BaseType)
+                    ruleNamesField = current.GetMembers("ruleNames").FirstOrDefault() as IFieldSymbol;
+
+                if (ruleNamesField == null)
+                    return null;
+            }
 
             var syntax = ruleNamesField.DeclaringSyntaxReferences.First().GetSyntax(CancellationToken.None) as VariableDeclaratorSyntax;
             var equalsValueClauseSyntax = syntax.Initializer;
