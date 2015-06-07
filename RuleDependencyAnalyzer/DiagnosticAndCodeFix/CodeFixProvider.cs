@@ -1,35 +1,36 @@
-﻿using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CodeActions;
-using Microsoft.CodeAnalysis.CodeFixes;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Text;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-
-namespace DiagnosticAndCodeFix
+﻿namespace DiagnosticAndCodeFix
 {
-    [ExportCodeFixProvider(DiagnosticAnalyzer.VersionTooLowId, LanguageNames.CSharp)]
-    public class CodeFixProvider : ICodeFixProvider
+    using System.Collections.Immutable;
+    using System.Linq;
+    using System.Threading;
+    using System.Threading.Tasks;
+    using Microsoft.CodeAnalysis;
+    using Microsoft.CodeAnalysis.CodeActions;
+    using Microsoft.CodeAnalysis.CodeFixes;
+    using Microsoft.CodeAnalysis.CSharp;
+    using Microsoft.CodeAnalysis.CSharp.Syntax;
+
+    [ExportCodeFixProvider(LanguageNames.CSharp, Name = RuleDependencyDiagnosticAnalyzer.VersionTooLowId)]
+    public class VersionTooLowCodeFixProvider : CodeFixProvider
     {
-        public IEnumerable<string> GetFixableDiagnosticIds()
+        public override ImmutableArray<string> FixableDiagnosticIds
         {
-            return new[] { DiagnosticAnalyzer.VersionTooLowId };
+            get
+            {
+                return ImmutableArray.Create(RuleDependencyDiagnosticAnalyzer.VersionTooLowId);
+            }
         }
 
-        public Task<IEnumerable<CodeAction>> GetFixesAsync(Document document, TextSpan span, IEnumerable<Diagnostic> diagnostics, CancellationToken cancellationToken)
+        public override Task RegisterCodeFixesAsync(CodeFixContext context)
         {
             ImmutableArray<CodeAction>.Builder result = ImmutableArray.CreateBuilder<CodeAction>();
-            foreach (Diagnostic diagnostic in diagnostics)
+            foreach (Diagnostic diagnostic in context.Diagnostics)
             {
                 // Return a code action that will invoke the fix.
-                result.Add(CodeAction.Create("Update version number", innerCancellationToken => UpdateVersionAsync(document, diagnostic.Location, innerCancellationToken)));
+                context.RegisterCodeFix(CodeAction.Create("Update version number", cancellationToken => UpdateVersionAsync(context.Document, diagnostic.Location, cancellationToken)), diagnostic);
             }
 
-            return Task.FromResult<IEnumerable<CodeAction>>(result.ToImmutable());
+            return Task.FromResult(true);
         }
 
         private async Task<Document> UpdateVersionAsync(Document document, Location location, CancellationToken cancellationToken)

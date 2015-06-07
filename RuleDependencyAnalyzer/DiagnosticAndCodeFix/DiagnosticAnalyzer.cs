@@ -14,7 +14,7 @@ using Dependents = Antlr4.Runtime.Dependents;
 namespace DiagnosticAndCodeFix
 {
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
-    public class DiagnosticAnalyzer : ISemanticModelAnalyzer
+    public class RuleDependencyDiagnosticAnalyzer : DiagnosticAnalyzer
     {
         internal const string AntlrCategory = "ANTLR";
 
@@ -50,7 +50,7 @@ namespace DiagnosticAndCodeFix
 
         public const string DiagnosticId = "DiagnosticAndCodeFix";
 
-        public ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics
         {
             get
             {
@@ -58,9 +58,14 @@ namespace DiagnosticAndCodeFix
             }
         }
 
-        public void AnalyzeSemanticModel(SemanticModel semanticModel, Action<Diagnostic> addDiagnostic, AnalyzerOptions options, CancellationToken cancellationToken)
+        public override void Initialize(AnalysisContext context)
         {
-            var compilation = semanticModel.Compilation;
+            context.RegisterCompilationAction(HandleCompilation);
+        }
+
+        public void HandleCompilation(CompilationAnalysisContext context)
+        {
+            var compilation = context.Compilation;
             var globalNamespace = compilation.GlobalNamespace;
             var ruleDependencyAttributeSymbols = GetRuleDependencyAttributeTypeSymbols(globalNamespace);
 
@@ -101,7 +106,7 @@ namespace DiagnosticAndCodeFix
             {
                 var diagnostics = CheckDependencies((CSharpCompilation)compilation, entry.Value, entry.Key);
                 foreach (var diagnostic in diagnostics)
-                    addDiagnostic(diagnostic);
+                    context.ReportDiagnostic(diagnostic);
             }
         }
 
