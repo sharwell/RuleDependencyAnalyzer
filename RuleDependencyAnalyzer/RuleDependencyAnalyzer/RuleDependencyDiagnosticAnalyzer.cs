@@ -245,7 +245,7 @@ namespace RuleDependencyAnalyzer
                 if (declaredVersion > highestRequiredDependency && !containsUnimplemented)
                 {
                     Location location = Location.Create(dependency.Item1.ApplicationSyntaxReference.SyntaxTree, dependency.Item1.ApplicationSyntaxReference.Span);
-                    var properties = ImmutableDictionary<string, string>.Empty.Add("expected", declaredVersion.ToString());
+                    var properties = ImmutableDictionary<string, string>.Empty.Add("expected", highestRequiredDependency.ToString());
                     errors.Add(Diagnostic.Create(VersionTooHigh, location, properties, ruleNames[GetRule(dependency.Item1)], highestRequiredDependency, declaredVersion, GetRecognizerType(dependency.Item1)));
                 }
             }
