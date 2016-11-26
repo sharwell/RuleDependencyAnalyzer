@@ -1,4 +1,4 @@
-﻿namespace DiagnosticAndCodeFix
+﻿namespace RuleDependencyAnalyzer
 {
     using System.Collections.Immutable;
     using System.Linq;

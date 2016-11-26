@@ -11,7 +11,7 @@ using System.Text;
 using System.Threading;
 using Dependents = Antlr4.Runtime.Dependents;
 
-namespace DiagnosticAndCodeFix
+namespace RuleDependencyAnalyzer
 {
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public class RuleDependencyDiagnosticAnalyzer : DiagnosticAnalyzer
