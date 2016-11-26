@@ -60,6 +60,8 @@ namespace RuleDependencyAnalyzer
 
         public override void Initialize(AnalysisContext context)
         {
+            context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.ReportDiagnostics);
+
             context.RegisterCompilationAction(HandleCompilation);
         }
 
