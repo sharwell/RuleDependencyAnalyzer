@@ -1,86 +1,184 @@
-﻿using Microsoft.CodeAnalysis;
-using System;
+﻿// Copyright (c) Tunnel Vision Laboratories, LLC. All Rights Reserved.
+// Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
 namespace TestHelper
 {
-    /// <summary>
-    /// Location where the diagnostic appears, as determined by path, line number, and column number.
-    /// </summary>
-    public struct DiagnosticResultLocation
-    {
-        public DiagnosticResultLocation(string path, int line, int column)
-        {
-            if (line < 0 && column < 0)
-            {
-                throw new ArgumentOutOfRangeException("At least one of line and column must be > 0");
-            }
-            if (line < -1 || column < -1)
-            {
-                throw new ArgumentOutOfRangeException("Both line and column must be >= -1");
-            }
-
-            this.Path = path;
-            this.Line = line;
-            this.Column = column;
-        }
-
-        public string Path;
-        public int Line;
-        public int Column;
-    }
+    using System;
+    using Microsoft.CodeAnalysis;
+    using Microsoft.CodeAnalysis.Text;
 
     /// <summary>
-    /// Struct that stores information about a Diagnostic appearing in a source
+    /// Structure that stores information about a <see cref="Diagnostic"/> appearing in a source.
     /// </summary>
     public struct DiagnosticResult
     {
-        private DiagnosticResultLocation[] locations;
+        private const string DefaultPath = "Test0.cs";
 
-        public DiagnosticResultLocation[] Locations
+        private static readonly object[] EmptyArguments = new object[0];
+
+        private FileLinePositionSpan[] spans;
+        private string message;
+
+        public DiagnosticResult(DiagnosticDescriptor descriptor)
+            : this()
+        {
+            this.Id = descriptor.Id;
+            this.Severity = descriptor.DefaultSeverity;
+            this.MessageFormat = descriptor.MessageFormat;
+        }
+
+        public FileLinePositionSpan[] Spans
         {
             get
             {
-                if (this.locations == null)
-                {
-                    this.locations = new DiagnosticResultLocation[] { };
-                }
-                return this.locations;
+                return this.spans ?? (this.spans = new FileLinePositionSpan[] { });
             }
 
             set
             {
-                this.locations = value;
+                this.spans = value;
             }
         }
 
-        public DiagnosticSeverity Severity { get; set; }
+        public DiagnosticSeverity Severity
+        {
+            get; set;
+        }
 
-        public string Id { get; set; }
+        public string Id
+        {
+            get; set;
+        }
 
-        public string Message { get; set; }
-
-        public string Path
+        public string Message
         {
             get
             {
-                return this.Locations.Length > 0 ? this.Locations[0].Path : "";
+                if (this.message != null)
+                {
+                    return this.message;
+                }
+
+                if (this.MessageFormat != null)
+                {
+                    return string.Format(this.MessageFormat.ToString(), this.MessageArguments ?? EmptyArguments);
+                }
+
+                return null;
+            }
+
+            set
+            {
+                this.message = value;
             }
         }
 
-        public int Line
+        public LocalizableString MessageFormat
+        {
+            get;
+            set;
+        }
+
+        public object[] MessageArguments
+        {
+            get;
+            set;
+        }
+
+        public bool HasLocation
         {
             get
             {
-                return this.Locations.Length > 0 ? this.Locations[0].Line : -1;
+                return (this.spans != null) && (this.spans.Length > 0);
             }
         }
 
-        public int Column
+        public DiagnosticResult WithArguments(params object[] arguments)
         {
-            get
+            DiagnosticResult result = this;
+            result.MessageArguments = arguments;
+            return result;
+        }
+
+        public DiagnosticResult WithMessage(string message)
+        {
+            DiagnosticResult result = this;
+            result.Message = message;
+            return result;
+        }
+
+        public DiagnosticResult WithMessageFormat(LocalizableString messageFormat)
+        {
+            DiagnosticResult result = this;
+            result.MessageFormat = messageFormat;
+            return result;
+        }
+
+        public DiagnosticResult WithLocation(int line, int column)
+        {
+            return this.WithLocation(DefaultPath, line, column);
+        }
+
+        public DiagnosticResult WithLocation(string path, int line, int column)
+        {
+            var linePosition = new LinePosition(line, column);
+
+            return this.AppendSpan(new FileLinePositionSpan(path, linePosition, linePosition));
+        }
+
+        public DiagnosticResult WithSpan(int startLine, int startColumn, int endLine, int endColumn)
+        {
+            return this.WithSpan(DefaultPath, startLine, startColumn, endLine, endColumn);
+        }
+
+        public DiagnosticResult WithSpan(string path, int startLine, int startColumn, int endLine, int endColumn)
+        {
+            return this.AppendSpan(new FileLinePositionSpan(path, new LinePosition(startLine, startColumn), new LinePosition(endLine, endColumn)));
+        }
+
+        public DiagnosticResult WithLineOffset(int offset)
+        {
+            DiagnosticResult result = this;
+            Array.Resize(ref result.spans, result.spans?.Length ?? 0);
+            for (int i = 0; i < result.spans.Length; i++)
             {
-                return this.Locations.Length > 0 ? this.Locations[0].Column : -1;
+                var newStartLinePosition = new LinePosition(result.spans[i].StartLinePosition.Line + offset, result.spans[i].StartLinePosition.Character);
+                var newEndLinePosition = new LinePosition(result.spans[i].EndLinePosition.Line + offset, result.spans[i].EndLinePosition.Character);
+
+                result.spans[i] = new FileLinePositionSpan(result.spans[i].Path, newStartLinePosition, newEndLinePosition);
             }
+
+            return result;
+        }
+
+        private DiagnosticResult AppendSpan(FileLinePositionSpan span)
+        {
+            FileLinePositionSpan[] newSpans;
+
+            if (this.spans != null)
+            {
+                newSpans = new FileLinePositionSpan[this.spans.Length + 1];
+                Array.Copy(this.spans, newSpans, this.spans.Length);
+                newSpans[this.spans.Length] = span;
+            }
+            else
+            {
+                newSpans = new FileLinePositionSpan[1]
+                {
+                    span,
+                };
+            }
+
+            // clone the object, so that the fluent syntax will work on immutable objects.
+            return new DiagnosticResult
+            {
+                Id = this.Id,
+                Message = this.message,
+                MessageFormat = this.MessageFormat,
+                MessageArguments = this.MessageArguments,
+                Severity = this.Severity,
+                Spans = newSpans,
+            };
         }
     }
 }

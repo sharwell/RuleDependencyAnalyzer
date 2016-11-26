@@ -1,0 +1,37 @@
+﻿<?xml version="1.0"?>
+<package>
+  <metadata minClientVersion="2.7">
+    <id>RuleDependencyAnalyzer</id>
+    <version>0.0.0</version>
+    <title>RuleDependencyAnalyzer</title>
+    <authors>Sam Harwell et. al.</authors>
+    <owners>Sam Harwell</owners>
+    <licenseUrl>https://raw.githubusercontent.com/tunnelvisionlabs/RuleDependencyAnalyzer/$version$/LICENSE</licenseUrl>
+    <projectUrl>https://github.com/tunnelvisionlabs/RuleDependencyAnalyzer</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>ANTLR 4 rule dependency analyzer</description>
+    <releaseNotes>https://github.com/tunnelvisionlabs/RuleDependencyAnalyzer/releases/$version$</releaseNotes>
+    <copyright>Copyright Sam Harwell 2015</copyright>
+    <tags>ANTLR Roslyn Diagnostic Analyzer</tags>
+    <developmentDependency>true</developmentDependency>
+  </metadata>
+  <files>
+
+    <!-- Binaries and symbols -->
+    <file src="bin\$Configuration$\RuleDependencyAnalyzer.dll" target="analyzers\dotnet\cs" />
+    <file src="bin\$Configuration$\**\RuleDependencyAnalyzer.resources.dll" target="analyzers\dotnet\cs" />
+    <file src="bin\$Configuration$\RuleDependencyAnalyzer.pdb" target="analyzers\dotnet\cs" />
+    <file src="bin\$Configuration$\RuleDependencyAnalyzer.CodeFixes.dll" target="analyzers\dotnet\cs" />
+    <file src="bin\$Configuration$\**\RuleDependencyAnalyzer.CodeFixes.resources.dll" target="analyzers\dotnet\cs" />
+    <file src="bin\$Configuration$\RuleDependencyAnalyzer.CodeFixes.pdb" target="analyzers\dotnet\cs" />
+
+    <!-- Scripts -->
+    <file src="tools\install.ps1" target="tools\" />
+    <file src="tools\uninstall.ps1" target="tools\" />
+
+    <!-- Source code -->
+    <file src="..\RuleDependencyAnalyzer\**\*.cs" exclude="..\RuleDependencyAnalyzer\obj\**\*.cs" target="src"/>
+    <file src="**\*.cs" exclude="obj\**\*.cs;Properties\AssemblyInfo.cs" target="src"/>
+
+  </files>
+</package>
