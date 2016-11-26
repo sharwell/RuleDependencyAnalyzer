@@ -10,14 +10,14 @@
     using Microsoft.CodeAnalysis.CSharp;
     using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-    [ExportCodeFixProvider(LanguageNames.CSharp, Name = RuleDependencyDiagnosticAnalyzer.VersionTooLowId)]
-    public class VersionTooLowCodeFixProvider : CodeFixProvider
+    [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(VersionMismatchCodeFixProvider))]
+    public class VersionMismatchCodeFixProvider : CodeFixProvider
     {
         public override ImmutableArray<string> FixableDiagnosticIds
         {
             get
             {
-                return ImmutableArray.Create(RuleDependencyDiagnosticAnalyzer.VersionTooLowId);
+                return ImmutableArray.Create(RuleDependencyDiagnosticAnalyzer.VersionTooHighId, RuleDependencyDiagnosticAnalyzer.VersionTooLowId);
             }
         }
 
