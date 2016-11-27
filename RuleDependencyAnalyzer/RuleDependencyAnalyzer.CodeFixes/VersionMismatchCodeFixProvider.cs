@@ -11,7 +11,7 @@
     using Microsoft.CodeAnalysis.CSharp.Syntax;
 
     [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(VersionMismatchCodeFixProvider))]
-    public class VersionMismatchCodeFixProvider : CodeFixProvider
+    internal class VersionMismatchCodeFixProvider : CodeFixProvider
     {
         public override ImmutableArray<string> FixableDiagnosticIds
         {

@@ -15,7 +15,7 @@ namespace RuleDependencyAnalyzer
     using Dependents = Antlr4.Runtime.Dependents;
 
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
-    public class RuleDependencyDiagnosticAnalyzer : DiagnosticAnalyzer
+    internal class RuleDependencyDiagnosticAnalyzer : DiagnosticAnalyzer
     {
         internal const string AntlrCategory = "ANTLR";
 
