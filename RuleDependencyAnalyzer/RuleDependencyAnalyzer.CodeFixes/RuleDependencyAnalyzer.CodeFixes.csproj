@@ -29,6 +29,10 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
+  <PropertyGroup>
+    <DocumentationFile>$(OutputPath)$(AssemblyName).xml</DocumentationFile>
+    <CodeAnalysisRuleSet>..\RuleDependencyAnalyzer.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
   <ItemGroup>
     <Reference Include="Antlr4.Runtime, Version=4.5.0.0, Culture=neutral, PublicKeyToken=e9931a4108ef2354, processorArchitecture=MSIL">
       <HintPath>..\..\packages\Antlr4.Runtime.4.5-alpha002\lib\net45\Antlr4.Runtime.dll</HintPath>
@@ -96,6 +100,12 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\RuleDependencyAnalyzer.Internal.ruleset">
+      <Link>RuleDependencyAnalyzer.Internal.ruleset</Link>
+    </None>
+    <None Include="..\RuleDependencyAnalyzer.ruleset">
+      <Link>RuleDependencyAnalyzer.ruleset</Link>
+    </None>
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
